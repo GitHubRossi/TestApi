@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using TestApi.Extensions;
-using TestApi.Helpers;
 using TestApi.Init;
 using TestApi.Models;
 using NLog;
+using System;
+using TestApi.Interfaces;
+using System.Net;
 
 namespace TestApi.Controllers;
 
@@ -13,32 +14,44 @@ public class TestApiController : ControllerBase
 {
     private static readonly NLog.ILogger _logger = LogManager.GetCurrentClassLogger();
 
-    private FileStorage _fileStorage;
+    private IFileStorage _fileStorage { get; set; }
+    private IMemoryStorage _memoryStorage { get; set; }
 
-    public TestApiController(FileStorage fileStorage)
+    public TestApiController(IFileStorage fileStorage, IMemoryStorage memoryStorage)
     {
+        _memoryStorage = memoryStorage;
         _fileStorage = fileStorage;
     }
 
     [HttpPost]
-    [Route("DataProviderByInputValue/{key:int}")]
+    [ProducesResponseType((int)HttpStatusCode.BadRequest)]
+    [ProducesResponseType((int)HttpStatusCode.OK)]
+    [Route("Calculation/{key:int}")]
 
-    public ActionResult<ResultModel> DataProviderByInputValue(int key, BodyInput input)
+    public ActionResult<ResultModel> Calculation(int key, BodyInput input)
     {
-        DateTime callTime = DateTime.Now;
+        try
+        {
+            DateTime callTime = DateTime.Now;
 
-        ResultModel result = new ResultModel();
+            ResultModel result = new ResultModel();
 
-        var dicVal = DicHelpers.CreateDicVal(2, callTime);
+            var dicVal = _memoryStorage.CreateDicVal(2, callTime);
 
-        MemoryStorage.memoryStorageDictionary.TryGetValue(key, out DicVal? previous_value);
+            MemoryStorage.memoryStorageDictionary.TryGetValue(key, out DicVal? previous_value);
 
-        if (previous_value != null) result.Previous_value = previous_value.Value;
-        result.Input_value = input.Input;
-        result.Computed_value = DicHelpers.GetDicValue(key, input.Input, dicVal, callTime);
+            if (previous_value != null) result.Previous_value = previous_value.Value;
+            result.Input_value = input.Input;
+            result.Computed_value = _memoryStorage.GetDicValue(key, input.Input, dicVal, callTime);
 
-        _fileStorage.SaveToFile(result, callTime);
+            _fileStorage.SaveToFile(result, callTime);
 
-        return Ok(result);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Unknown error ex={ex.InnerException}");
+            return BadRequest();
+        }
     }
 }
